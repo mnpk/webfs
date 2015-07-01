@@ -17,3 +17,16 @@ $ cat mnt/hello.txt
 Hello, world!
 
 ```
+
+## Build
+- Need C++11 Support (tested on gcc 4.9.2)
+
+```bash
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+```
+
+
+
