@@ -8,11 +8,11 @@
 #include <fstream>
 #include "fusecpp/fusecpp.h"
 #include "httpp/include/http.h"
+#include "config/config.h"
 
 using namespace fuse_cpp;
-
-static std::string origin = "http://alice";
-static std::ofstream log;
+static std::string origin = "";
+static std::ofstream logfs;
 
 static int http_getattr(const char *path, struct stat *stbuf) {
   memset(stbuf, 0, sizeof(struct stat));
@@ -20,9 +20,8 @@ static int http_getattr(const char *path, struct stat *stbuf) {
     stbuf->st_mode = S_IFDIR | 0755;
     stbuf->st_nlink = 2;
   } else {
-    // log << "url:" << url << std::endl;
     std::string url = origin + std::string(path);
-    log << "[getattr] path:" << path << " url:" << url << "\n";
+    logfs << "[getattr] path:" << path << " url:" << url << "\n";
     try {
       http::Client http;
       http::Response res = http.head(url);
@@ -31,10 +30,10 @@ static int http_getattr(const char *path, struct stat *stbuf) {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
       stbuf->st_size = atoi(res.headers_["Content-Length"].c_str());
-      log << "[getattr] size:" << atoi(res.headers_["Content-Length"].c_str())
+      logfs << "[getattr] size:" << atoi(res.headers_["Content-Length"].c_str())
           << "\n";
     } catch (std::runtime_error &err) {
-      log << "[getattr] failed to request " << url << ", error:" << err.what()
+      logfs << "[getattr] failed to request " << url << ", error:" << err.what()
           << std::endl;
       return -ENOENT;
     }
@@ -43,7 +42,7 @@ static int http_getattr(const char *path, struct stat *stbuf) {
 }
 
 static int http_open(const char *path, struct fuse_file_info *fi) {
-  log << "[open] path:" << path << "\n";
+  logfs << "[open] path:" << path << "\n";
   if ((fi->flags & 3) != O_RDONLY)
     return -EACCES;
 
@@ -54,7 +53,7 @@ static int http_open(const char *path, struct fuse_file_info *fi) {
     if (res.code_ != 200)
       return -ENOENT;
   } catch (std::runtime_error &err) {
-    log << "[open] failed to request " << url << ", error:" << err.what()
+    logfs << "[open] failed to request " << url << ", error:" << err.what()
         << std::endl;
     return -ENOENT;
   }
@@ -63,8 +62,7 @@ static int http_open(const char *path, struct fuse_file_info *fi) {
 
 static int http_read(const char *path, char *buf, size_t size, off_t offset,
                      struct fuse_file_info * /*fi*/) {
-  // (void)fi;
-  log << "[read] path:" << path << " size:" << size << " offset:" << offset
+  logfs << "[read] path:" << path << " size:" << size << " offset:" << offset
       << std::endl;
   ;
   std::string url = origin + std::string(path);
@@ -74,7 +72,7 @@ static int http_read(const char *path, char *buf, size_t size, off_t offset,
     http::Client http;
     http::Response res = http.get(url, {{"Range", range_value.str()}});
     if (res.code_ != 200 && res.code_ != 206) {
-      log << "[read] http response is not OK. url:" << url
+      logfs << "[read] http response is not OK. url:" << url
           << " code:" << res.code_ << " reason:" << res.reason_ << std::endl;
       return -ENOENT;
     }
@@ -83,7 +81,7 @@ static int http_read(const char *path, char *buf, size_t size, off_t offset,
       size = content.length();
     memcpy(buf, content.c_str(), size);
   } catch (std::runtime_error &err) {
-    log << "[read] failed to request " << url << ", error:" << err.what()
+    logfs << "[read] failed to request " << url << ", error:" << err.what()
         << std::endl;
     return -ENOENT;
   }
@@ -92,7 +90,9 @@ static int http_read(const char *path, char *buf, size_t size, off_t offset,
 }
 
 int main(int argc, char *argv[]) {
-  log.open("/home/mnpk/src/wfs/log.txt");
+  Config config("webfs.json");
+  origin = config.origin();
+  logfs.open(config.log());
   if (argc != 2) {
     printf("Usage: %s <dir>\n", argv[0]);
     return 1;
