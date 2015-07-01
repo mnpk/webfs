@@ -12,7 +12,7 @@ gcc -Wall hello.c `pkg-config fuse --cflags --libs` -o hello
 #include <fcntl.h>
 #include <fstream>
 #include "fusecpp/fusecpp.h"
-#include "http/http.h"
+#include "httpp/include/http.h"
 
 using namespace fuse_cpp;
 

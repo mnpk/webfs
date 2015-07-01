@@ -1,0 +1,3 @@
+[submodule "httpp"]
+	path = httpp
+	url = git@github.com:mnpk/httpp.git
