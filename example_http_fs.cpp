@@ -1,6 +1,6 @@
 /*
-  FUSE: Filesystem in Userspace
-  gcc -Wall hello.c `pkg-config fuse --cflags --libs` -o hello
+FUSE: Filesystem in Userspace
+gcc -Wall hello.c `pkg-config fuse --cflags --libs` -o hello
 */
 
 #define FUSE_USE_VERSION 26
@@ -17,71 +17,79 @@
 using namespace fuse_cpp;
 
 static std::string origin = "http://localhost";
-// static std::ofstream log;
+static std::ofstream log;
 
 static int http_getattr(const char *path, struct stat *stbuf) {
-  // log << "getattr" << path << "\n";
+  log << "[getattr] path:" << path << "\n";
   memset(stbuf, 0, sizeof(struct stat));
   if (strcmp(path, "/") == 0) {
     stbuf->st_mode = S_IFDIR | 0755;
     stbuf->st_nlink = 2;
   } else {
-    http::Client http;
-    std::string url = origin + std::string(path);
     // log << "url:" << url << std::endl;
-    http::Response res = http.head(url);
-    // if (strcmp(path, http_path) != 0)
-    if (res.code_ != 200)
+    std::string url = origin + std::string(path);
+    try {
+      http::Client http;
+      http::Response res = http.head(url);
+      if (res.code_ != 200)
+        return -ENOENT;
+      stbuf->st_mode = S_IFREG | 0444;
+      stbuf->st_nlink = 1;
+      stbuf->st_size = atoi(res.headers_["Content-Length"].c_str());
+    } catch (std::runtime_error& err) {
+      log << "[getattr] failed to request " << url << ", error:" << err.what() << std::endl;
       return -ENOENT;
-
-    stbuf->st_mode = S_IFREG | 0444;
-    stbuf->st_nlink = 1;
-    stbuf->st_size = atoi(res.headers_["Content-Length"].c_str());
+    }
   }
   return 0;
 }
 
 static int http_open(const char *path, struct fuse_file_info *fi) {
-  // log << "open\n";
+  log << "[open] path:" << path << "\n";
   if ((fi->flags & 3) != O_RDONLY)
     return -EACCES;
 
   http::Client http;
   std::string url = origin + std::string(path);
-  http::Response res = http.head(url);
-
-  // log << "url:" << url << std::endl;
-  // if (strcmp(path, http_path) != 0)
-  if (res.code_ != 200)
+  try {
+    http::Response res = http.head(url);
+    if (res.code_ != 200)
+      return -ENOENT;
+  } catch (std::runtime_error& err) {
+    log << "[open] failed to request " << url << ", error:" << err.what() << std::endl;
     return -ENOENT;
-
+  }
   return 0;
 }
 
 static int http_read(const char *path, char *buf, size_t size, off_t offset,
-                      struct fuse_file_info* /*fi*/) {
+                     struct fuse_file_info* /*fi*/) {
   // (void)fi;
-  // log << "read\n";
-  http::Client http;
+  log << "[read] path:" << path << " size:" << size << " offset:" << offset << std::endl;;
   std::string url = origin + std::string(path);
-  http::Response res = http.get(url);
-  // if (strcmp(path, http_path) != 0)
-  if (res.code_ != 200)
+  try {
+    http::Client http;
+    http::Response res = http.get(url);
+    if (res.code_ != 200)
+      return -ENOENT;
+    std::string content = res.contentStr();
+    if (static_cast<size_t>(offset) < content.length()) {
+      if (offset + size > content.length())
+        size = content.length() - offset;
+      memcpy(buf, content.c_str() + offset, size);
+    } else
+      size = 0;
+  } catch (std::runtime_error& err) {
+    log << "[read] failed to request " << url << ", error:" << err.what() << std::endl;
     return -ENOENT;
+  }
 
-  std::string content = res.contentStr();
-  if (static_cast<size_t>(offset) < content.length()) {
-    if (offset + size > content.length())
-      size = content.length() - offset;
-    memcpy(buf, content.c_str() + offset, size);
-  } else
-    size = 0;
 
   return size;
 }
 
 int main(int argc, char *argv[]) {
-  // log.open("/home/mnpk/src/wfs/log.txt");
+  log.open("/home/mnpk/src/wfs/log.txt");
   if (argc != 2) {
     printf("Usage: %s <dir>\n", argv[0]);
     return 1;
