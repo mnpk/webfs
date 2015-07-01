@@ -28,5 +28,12 @@ $ cmake ..
 $ make
 ```
 
-
+## Config
+#### `webfs.json`
+```json
+{
+  "origin": "http://alice",
+  "log": "./webfs.log"
+}
+```
 
